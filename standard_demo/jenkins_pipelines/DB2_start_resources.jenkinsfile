@@ -1,0 +1,47 @@
+//
+// Pipeline to start DB2 Resources - DCT version
+//
+// Demo:  Standard Demo
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+   agent { label 'devops' }
+   stages {
+      stage('enable DB2 environments') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit enable_environment environment_id='DB2_Target'"
+            sh "/root/dct-toolkit enable_environment environment_id='DB2_Source'"
+            sh "exit 0"
+         }
+      }
+      stage('start DB2 DSOURCE') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit enable_dsource dsource_id='db2_master'"
+            sh "exit 0"
+         }
+      }
+      stage('start DB2 VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Start_MASK: {
+                      sh "/root/dct-toolkit enable_vdb vdb_id='DB2_MASK'"
+                      sh "exit 0"
+                    },
+                Start_QA: {
+                      sh "/root/dct-toolkit enable_vdb vdb_id='DB2_QA'"
+                      sh "exit 0"
+                    },
+                Start_DEV: {
+                      sh "/root/dct-toolkit enable_vdb vdb_id='DB2_DEV'"
+                      sh "exit 0"
+                }
+            )
+         }
+      }
+   }
+}

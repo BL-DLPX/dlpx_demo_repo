@@ -1,0 +1,22 @@
+//
+// Pipeline to prepare Source DB for Demo 
+//
+// Demo:  Oracle Flask Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Drop Source DB tables ORCL') {
+         agent { label 'devops' }
+         steps {
+            sh """
+            """
+         }
+      } 
+   }
+}

@@ -1,0 +1,84 @@
+//
+// Pipeline to stop Postgres/Filesystem Resources - DCT Version
+//
+// Demo:  Standard Demo
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+   agent { label 'devops' }
+   stages {
+      stage('stop source Drupal docker containers') {
+         agent { label 'Postgres Source' }
+         steps {
+            sh "/home/delphix/stop_web_source.sh"
+            sh "/home/delphix/stop_web_cust_source.sh"
+            sh "exit 0"
+         }
+      }
+      stage('disable Postgres and Filesystem DSOURCE') {
+         agent { label 'devops' }
+         steps {
+            sh "/home/delphix/dct-toolkit disable_dsource dsource_id='Postgres_master'"
+            sh "/home/delphix/dct-toolkit disable_dsource dsource_id='AppFS_master'"
+            sh "/home/delphix/dct-toolkit disable_dsource dsource_id='Postgres_cust_master'"
+            sh "/home/delphix/dct-toolkit disable_dsource dsource_id='AppFS_cust_master'"
+            sh "exit 0"
+         }
+      }
+      stage('disable VDBgroups CMS_MASK, CMS_DEV and CMS_QA') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Disable_CMS_MASK: {
+                      sh "/home/delphix/dct-toolkit disable_vdb_group vdb_group_id='CMS_MASK'"
+                      sh "exit 0"
+                    },
+                Disable_CMS_QA: {
+                      sh "/home/delphix/dct-toolkit disable_vdb_group vdb_group_id='CMS_QA'"
+                      sh "exit 0"
+                    },
+                Disable_CMS_DEV: {
+                      sh "/home/delphix/dct-toolkit disable_vdb_group vdb_group_id='CMS_DEV'"
+                      sh "exit 0"
+                }
+            )
+         }
+      }
+      stage('disable VDBgroups CMS_CUST_MASK, CMS_CUST_DEV and CMS_CUST_QA') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Disable_CMS_CUST_MASK: {
+                      sh "/home/delphix/dct-toolkit disable_vdb_group vdb_group_id='CMS_CUST_MASK'"
+                      sh "exit 0"
+                    },
+                Disable_CMS_CUST_QA: {
+                      sh "/home/delphix/dct-toolkit disable_vdb_group vdb_group_id='CMS_CUST_QA'"
+                      sh "exit 0"
+                    },
+                Disable_CMS_CUST_DEV: {
+                      sh "/home/delphix/dct-toolkit disable_vdb_group vdb_group_id='CMS_CUST_DEV'"
+                      sh "exit 0"
+                }
+            )
+         }
+      }
+      stage('disable Postgres DEV for Liquibase demo') {
+         agent { label 'devops' }
+         steps {
+            sh "/home/delphix/dct-toolkit disable_vdb vdb_id='Postgres_DEV_lbase'"
+            sh "exit 0"
+         }
+      }
+      stage('disable Postgres and Filesystem environments') {
+         agent { label 'devops' }
+         steps {
+            sh "/home/delphix/dct-toolkit disable_environment environment_id='Postgres_Target'"
+            sh "/home/delphix/dct-toolkit disable_environment environment_id='Postgres_Source'"
+            sh "exit 0"
+         }
+      }
+   }
+}

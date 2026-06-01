@@ -1,0 +1,73 @@
+//
+// Pipeline to create local Demo environment
+//
+// Demo:  MSSQL Flask Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//  
+// 2025-12-17 - SQLServer 2022
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Create SQL Server Staging environment') {
+         agent { label 'devops' }
+         steps {
+                sh '''
+                /root/dct-toolkit create_environment engine_id="sourcecde" name="SQL Server Staging" os_name="WINDOWS" hostname="10.160.1.62" connector_port="9100" username="delphix_os" password="Delphix_123$" description="SQL Server staging VM"
+                '''
+         }
+      }
+      stage('Create SQL Server Source environment') {
+         agent { label 'devops' }
+         steps {    
+                 sh '''
+                /root/dct-toolkit create_environment engine_id="sourcecde" name="SQL Server Source" os_name="WINDOWS" hostname="10.160.1.22" staging_environment="SQL Server Staging" username="delphix_os" password="Delphix_123$" description="SQL Server source VM"
+                '''
+         }
+      }
+      stage('Create Dsource') {
+         agent { label 'devops' }
+         steps {
+            sh '''
+               SRCID=$(/root/dct-toolkit search_sources name="database001" -cs -c id |grep -vw "id")
+               REPO=$(/root/dct-toolkit search_environments name="SQL Server Staging" -ex=repositories |grep SQL2022 | awk '{ print $1 }')
+               STGUSER=\$(/root/dct-toolkit get_environments -ex=env_users | grep "SQL Server Staging" | awk '{ print $1}')
+               SRCUSER=\$(/root/dct-toolkit get_environments -ex=env_users | grep "SQL Server Source" | awk '{ print $1}')
+               /root/dct-toolkit update_repository environment_id="SQL Server Staging" repository_id="\${REPO}" --is_staging
+               /root/dct-toolkit link_mssql_database source_id="\${SRCID}" ppt_repository="\${REPO}" name="mssql_master" mssql_user_environment_reference="\${SRCUSER}" ppt_host_user="\${STGUSER}" group_id="Source" --log_sync_enabled
+            '''
+         }
+      }
+      stage('Create Masked Master VDB') {
+         agent { label 'devops' }
+         steps {
+            sh '''
+               REPO=\$(/root/dct-toolkit search_environments name="SQL Server Staging" -ex=repositories |grep SQL2022 | awk '{ print $1 }')
+               /root/dct-toolkit provision_vdb_by_snapshot mssql name="mssql_mask" database_name="mssql_mask" --masked --vdb_restart source_data_id="mssql_master" repository_id="\${REPO}" target_group_id="MaskGC"
+            '''
+         }
+      }
+      stage('Create local DEV and QA VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Create_DEV_VDB: {
+                      sh '''
+                        REPO=\$(/root/dct-toolkit search_environments name="SQL Server Staging" -ex=repositories |grep SQL2022 | awk '{ print $1 }')
+                        /root/dct-toolkit provision_vdb_by_snapshot mssql name="mssql_dev" database_name="mssql_dev" --vdb_restart source_data_id="mssql_mask" repository_id="\${REPO}" target_group_id="DEV"
+                      '''
+                },
+                Create_QA_VDB: {
+                      sh '''
+                        REPO=\$(/root/dct-toolkit search_environments name="SQL Server Staging" -ex=repositories |grep SQL2022 | awk '{ print $1 }')
+                        /root/dct-toolkit provision_vdb_by_snapshot mssql name="mssql_qa" database_name="mssql_qa" --vdb_restart source_data_id="mssql_mask" repository_id="\${REPO}" target_group_id="QA"
+                      '''
+                }
+            )
+         }
+      }
+   }
+}

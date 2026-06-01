@@ -1,0 +1,78 @@
+//
+// Liquibase preserve changes after refresh
+//
+// Demo:  Postgres Liquibase Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+// 
+pipeline {
+   agent { label 'devops' }
+   environment {
+      DEMODIR = '/root/postgres_liquibase_demo/02-preserve_changes'
+      LB_PG_USER = credentials('LB_PG_USER')
+      LB_PG_PASSWORD = credentials('LB_PG_PASSWORD')
+   }
+   stages {
+      stage('Clean-up pipeline') {
+         agent { label 'devops' }
+         steps {
+            sh """
+            rm -Rf $DEMODIR/objects*
+            rm -Rf $DEMODIR/reports
+            rm -f changelog*.json
+            rm -f snapshot*.json
+            """
+         }
+      }      
+      stage('Refresh QA from Prod') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit refresh_vdb_by_snapshot vdb_id='Postgres_QA'
+            """
+         }
+      }
+      stage('Alter QA manually') {
+         agent { label 'devops' }
+         steps {
+            sh """
+                psql postgresql://$LB_PG_USER:$LB_PG_PASSWORD@10.160.1.74:7432/delphixdb -f $DEMODIR/scripts/create_procedure.sql
+                psql postgresql://$LB_PG_USER:$LB_PG_PASSWORD@10.160.1.74:7432/delphixdb -f $DEMODIR/scripts/create_additional_changes.sql
+            """
+         }
+      }
+      stage('Liquibase Snapshot QA before refresh') {
+         agent { label 'devops' }
+         steps {
+            sh """
+                liquibase --defaultsFile=$DEMODIR/../qa.properties snapshot --snapshot-format=json --output-file=snapshot_QA_before_refresh.json
+            """
+         }
+      }
+      stage('Get Delta between QA snapshot and MASK') {
+         agent { label 'devops' }
+         steps {
+            sh """
+                liquibase --url="jdbc:postgresql://10.160.1.74:5444/delphixdb" --username=$LB_PG_USER --password=$LB_PG_PASSWORD --reports-enabled=true --reports-path=$DEMODIR/reports  --reference-url="offline:postgres?snapshot=snapshot_QA_before_refresh.json"  diff-changelog   --drift-severity=0  --reports-name=$DEMODIR/diff_report.html --changelog-file=changelog_QA.json
+            """
+         }
+      }
+      stage('Refresh QA with Prod - loose changes') {
+         agent { label 'devops' }
+         steps {
+            sh """
+            /root/dct-toolkit refresh_vdb_by_snapshot vdb_id='Postgres_QA'
+            """
+         }
+      }
+      stage('Apply Delta to QA') {
+         agent { label 'devops' }
+         steps {
+            sh """
+                liquibase --defaultsFile=$DEMODIR/../qa.properties --reports-path=$DEMODIR/reports update --changelog-file=changelog_QA.json
+            """
+         }
+      }
+   }
+}

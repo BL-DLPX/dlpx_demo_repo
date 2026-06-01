@@ -1,0 +1,77 @@
+//
+// Pipeline for Automated Test with error for a VDB Group
+//
+// Demo:  Digital Bank Demo 2.0
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+pipeline {
+   agent { label 'devops' }
+   stages {
+      stage('Refresh HOTFIX VDB Group from PIT snapshot') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit refresh_vdb_group_by_snapshot vdb_group_id='Bankapp_HOTFIX'
+            """
+         }
+      }  
+      stage('Delete demo bookmarks') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit delete_bookmark bookmark_id='HOTFIX Pre-test' || true
+            """
+            sh """
+               /root/dct-toolkit delete_bookmark bookmark_id='HOTFIX Error # 12345' || true
+            """
+         }    
+      }
+
+      stage('Bookmark HOTFIX pre-test') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               psql -p 5450 -h 10.160.1.74 -d digitalbank -U postgres -c 'select id,username,password from public.users'
+               psql -p 5451 -h 10.160.1.74 -d digitalcredit -U postgres -c 'select id,username,password from public.users'
+            """
+            sh """
+               /root/dct-toolkit create_bookmark vdb_group_id='Bankapp_HOTFIX' name="HOTFIX Pre-test"
+            """
+         }
+      }
+       stage('Run Test that corrupts data') {
+         agent { label 'devops' }
+         steps {
+            sh """
+                psql -p 5450 -h 10.160.1.74 -d digitalbank -U postgres -c "update public.users set password='blabla'"
+                psql -p 5451 -h 10.160.1.74 -d digitalcredit -U postgres -c "update public.users set password='blabla'"
+            """
+            sh """
+               psql -p 5450 -h 10.160.1.74 -d digitalbank -U postgres -c 'select id,username,password from public.users'
+               psql -p 5451 -h 10.160.1.74 -d digitalcredit -U postgres -c 'select id,username,password from public.users'
+            """         }
+      }
+      stage('Get Shared Bookmark for Developer') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit create_bookmark vdb_group_id='Bankapp_HOTFIX' name="HOTFIX Error # 12345" tags team=DEV
+            """
+         }
+      }
+      stage('Rewind HOTFIX to Pre-test bookmark') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit refresh_vdb_group vdb_group_id='Bankapp_HOTFIX' bookmark_id='HOTFIX Pre-test'
+            """
+            sh """
+               psql -p 5450 -h 10.160.1.74 -d digitalbank -U postgres -c 'select id,username,password from public.users'
+               psql -p 5451 -h 10.160.1.74 -d digitalcredit -U postgres -c 'select id,username,password from public.users'
+            """
+         }
+      }
+   }
+}

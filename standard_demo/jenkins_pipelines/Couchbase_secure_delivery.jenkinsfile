@@ -1,0 +1,51 @@
+//
+// Pipeline for Secure Delivery of Couchbase datasource - DCT Version
+//
+// Demo:  Standard Demo
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+   agent { label 'devops' }
+   stages {
+       stage('Snap Production') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit snapshot_dsource dsource_id='Couchbase_master'"
+         }
+     }
+      stage('Refresh MASK') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit refresh_vdb_by_snapshot vdb_id='Couchbase_MASK'"
+         }
+      }
+      stage('Run MASK job (dummy)') {
+         agent { label 'devops' }
+         steps {
+            sh "exit 0"
+         }
+      }
+      stage('Snap MASK') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit snapshot_vdb vdb_id='Couchbase_MASK'"
+         }
+      }
+      stage('Refresh DEV and QA from MASK') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Refresh_QA: {
+                      sh "/root/dct-toolkit refresh_vdb_by_snapshot vdb_id='Couchbase_QA'"
+                    },
+                Refresh_DEV: {
+                      sh "/root/dct-toolkit refresh_vdb_by_snapshot vdb_id='Couchbase_DEV'"
+                }
+            )
+         }
+      }
+   }
+}

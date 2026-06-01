@@ -1,0 +1,137 @@
+networks:
+  default:
+    name: bank_default-dev
+
+services:
+
+  # =====================================================================
+  # Digital Broker Service Configuration
+  # =====================================================================
+  broker-dev:
+    image: digisic/digitalbroker:latest
+    container_name: broker-dev
+    hostname: broker-dev
+    ports:
+      - "8162:8161"
+      - "61618:61616"
+    networks:
+      - default
+    restart: unless-stopped
+
+  # =====================================================================
+  # Digital Credit Service Configuration
+  # =====================================================================
+  credit-dev:
+    image: keithpuzey/digitalcredit:sep24
+    container_name: credit-dev
+    hostname: credit-dev
+    environment:
+      # Logging Options
+      LOGGING_LEVEL_IO_DIGISIC_CREDIT: INFO
+
+      # Digital Broker Connection
+      SPRING_ARTEMIS_MODE: native
+      SPRING_ARTEMIS_HOST: broker-dev
+      SPRING_ARTEMIS_PORT: 61616
+      SPRING_ARTEMIS_USER: admin
+      SPRING_ARTEMIS_PASSWORD: admin
+
+      # Credit Application Process
+      IO_DIGISIC_CREDIT_APP_PROCESS_ENABLED: 'true'
+      IO_DIGISIC_CREDIT_APP_PROCESS_TIME: 20
+
+      # Digital Credit Application Process JMS Queues
+      IO_DIGISIC_PARTNER_CREDIT_APP_REQUEST: CREDIT.APP.REQUEST
+      IO_DIGISIC_PARTNER_CREDIT_APP_RESPONSE: CREDIT.APP.RESPONSE
+
+      # Database Query Configuration
+      DB_TYPE: postgres
+      DB_HOST: 10.160.1.74
+      DB_PORT: 6433
+      DB_NAME: digitalcredit
+      DB_USER: postgres
+      DB_PASSWORD: Delphix_123!
+      SPRING_DATASOURCE_PLATFORM: postgres
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: Delphix_123!
+      SPRING_DATASOURCE_URL: jdbc:postgresql://10.160.1.74:6433/digitalcredit
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+    ports:
+      - "3502:8080" # HTTP
+      - "3537:8443" # HTTPS
+    depends_on:
+      - broker-dev
+    networks:
+      - default
+    restart: unless-stopped
+
+  # =====================================================================
+  # Digital Bank Service Configuration
+  # =====================================================================
+  bank-dev:
+    image: keithpuzey/digitalbank:oct24
+    container_name: bank-dev
+    hostname: bank-dev
+    environment:
+      # Session Management
+      SERVER_SERVLET_SESSION_TIMEOUT: 5m
+      IO_DIGISIC_MAX_SESSIONS: 10000 # Set to 1 for single concurrent user session
+
+      # Logging Options
+      LOGGING_LEVEL_IO_DIGISIC_BANK: INFO
+
+      # Digital Broker connection
+      SPRING_ARTEMIS_MODE: native
+      SPRING_ARTEMIS_HOST: broker-dev
+      SPRING_ARTEMIS_PORT: 61616
+      SPRING_ARTEMIS_USER: admin
+      SPRING_ARTEMIS_PASSWORD: admin
+
+      # Digital Credit Connection
+      IO_DIGISIC_CREDIT_ENABLED: 'true'
+      IO_DIGISIC_CREDIT_PROTOCOL: http
+      IO_DIGISIC_CREDIT_HOST: credit-dev
+      IO_DIGISIC_CREDIT_PORT: 8080
+      IO_DIGISIC_CREDIT_CONTEXT-PATH: /credit
+      IO_DIGISIC_CREDIT_USERNAME: admin@demo.io
+      IO_DIGISIC_CREDIT_PASSWORD: Demo123!
+
+      # Digital Credit Application Process JMS Queues
+      IO_DIGISIC_PARTNER_CREDIT_APP_REQUEST: CREDIT.APP.REQUEST
+      IO_DIGISIC_PARTNER_CREDIT_APP_RESPONSE: CREDIT.APP.RESPONSE
+
+      # ATM Location Service Connection
+      IO_DIGISIC_BANK_ATM_PROTOCOL: https
+      IO_DIGISIC_BANK_ATM_HOST: bankingservices.io
+      IO_DIGISIC_BANK_ATM_PORT:
+
+      # VISA Direct Payment Service
+      IO_DIGISIC_BANK_VISA_PROTOCOL: https
+      IO_DIGISIC_BANK_VISA_HOST: creditservices.io
+      IO_DIGISIC_BANK_VISA_PORT:
+
+      # Open Banking API Service
+      IO_DIGISIC_BANK_OBP_ENABLED: 'true'
+      IO_DIGISIC_BANK_OBP_CONSUMER_KEY: vwfpvwfr1kngt0up2jelebzmvxrhst4vhxvw1jm3
+      IO_DIGISIC_BANK_OBP_VERSION: v4.0.0
+      IO_DIGISIC_BANK_OBP_PROTOCOL: https
+      IO_DIGISIC_BANK_OBP_HOST: openbankingservices.io
+      IO_DIGISIC_BANK_OBP_PORT:
+
+      # Database Query Configuration
+      DB_TYPE: postgres
+      DB_HOST: 10.160.1.74
+      DB_PORT: 6432
+      DB_NAME: digitalbank
+      DB_USER: postgres
+      DB_PASSWORD: Delphix_123!
+      SPRING_DATASOURCE_PLATFORM: postgres
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: Delphix_123!
+      SPRING_DATASOURCE_URL: jdbc:postgresql://10.160.1.74:6432/digitalbank
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+    ports:
+      - "9000:8080"
+    networks:
+      - default
+    restart: unless-stopped

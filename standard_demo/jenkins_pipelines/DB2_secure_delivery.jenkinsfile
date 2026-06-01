@@ -1,0 +1,51 @@
+//
+// Pipeline for Secure Delivery of DB2 datasource - DCT Version
+//
+// Demo:  Standard Demo
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+   agent { label 'devops' }
+   stages {
+       stage('Snap Production') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit snapshot_dsource dsource_id='db2_master'"
+         }
+     }
+      stage('Refresh MASK') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit refresh_vdb_by_snapshot vdb_id='DB2_MASK'"
+         }
+      }
+      stage('Run MASK job') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit execute_masking_job engine_id=cce masking_job_id='Mask'"
+         }
+      }
+      stage('Snap MASK') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit snapshot_vdb vdb_id='DB2_MASK'"
+         }
+      }
+      stage('Refresh DEV and QA from MASK') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Refresh_QA: {
+                      sh "/root/dct-toolkit refresh_vdb_by_snapshot vdb_id='DB2_QA'"
+                    },
+                Refresh_DEV: {
+                      sh "/root/dct-toolkit refresh_vdb_by_snapshot vdb_id='DB2_DEV'"
+                }
+            )
+         }
+      }
+   }
+}

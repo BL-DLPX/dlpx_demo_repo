@@ -1,0 +1,23 @@
+//
+// Pipeline to Delete Source DB for Demo
+//
+// Demo:  MSSQL Flask Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Delete source DB tables') {
+         agent { label 'devops' }
+         steps {
+            sh '''
+            /opt/mssql-tools18/bin/sqlcmd -C -S 10.160.1.22 -U sa -P Delphix_123! -Q "DROP DATABASE database001"
+            '''
+         }
+      }
+   }
+}

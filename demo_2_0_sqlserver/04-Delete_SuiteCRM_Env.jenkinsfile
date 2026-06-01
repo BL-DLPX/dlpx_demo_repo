@@ -1,0 +1,55 @@
+//
+// Pipeline to destroy the SuiteCRM masked vdb, dsource, environments and unregister engines
+//
+// Demo:  Standard Demo 2.0
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+// 2025 (c) Delphix - Stuart Williams (stuart.williams@perforce.com)
+//
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+         stage('Delete SuiteCRM Masking VDB') {
+            agent { label 'devops' }
+            steps {
+               sh '''
+                  /root/dct-toolkit delete_vdb  vdb_id='suitecrm-mask'
+               '''
+            }
+         }
+         stage('Delete SuiteCRM dsource') {
+            agent { label 'devops' }
+            steps {
+               sh '''
+                  /root/dct-toolkit delete_dsource  dsource_id='suitecrm db'
+               '''
+            }
+         }
+         stage('Delete SQL Server Source environment') {
+            agent { label 'devops' }
+            steps {
+               sh '''
+               /root/dct-toolkit delete_environment environment_id='SQL Server Source'
+               '''
+            }
+         }
+         stage('Delete SQL Server Staging environment') {
+            agent { label 'devops' }
+            steps {
+               sh '''
+               /root/dct-toolkit delete_environment environment_id='SQL Server Staging'
+               '''
+            }
+         }
+         stage('Unregister engines from DCT') {
+            agent { label 'devops' }
+            steps {
+               sh '''
+               /root/dct-toolkit unregister_engine engine_id=sourcecde
+               /root/dct-toolkit unregister_engine engine_id=cce
+               '''
+            }
+         }
+   }
+}

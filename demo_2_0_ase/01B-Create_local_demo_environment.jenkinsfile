@@ -1,0 +1,93 @@
+//
+// Pipeline to create local Demo environment
+//
+// Demo:  Sybase ASE Demo 2.0
+//
+// 2026 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Register local environments') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Register_ase_source: {
+                      sh """
+                         /root/dct-toolkit create_environment engine_id='sourcecde' name='Ase_Source' os_name='UNIX' hostname='10.160.1.24' toolkit_path='/toolkit' username='delphix' password='delphix' ase_db_username='sa' ase_db_password='delphix' description='ASE Source VM'
+                      """
+                },
+                Register_ase_target: {
+                      sh """
+                         /root/dct-toolkit create_environment engine_id='sourcecde' name='Ase_Target' os_name='UNIX' hostname='10.160.1.64' toolkit_path='/toolkit' username='delphix' password='delphix' ase_db_username='sa' ase_db_password='delphix' description='ASE Target VM'
+                         /root/dct-toolkit update_repository environment_id='Ase_Target' repository_id='SYBASE_TGT' --is_staging
+                      """
+                }
+            )
+         }
+      }
+      stage('Link Ase Dsource') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Create_dsource1: {
+                      sh """
+                         /root/dct-toolkit link_ase_database source_id='asesrc1' name='Ase1_master' group_id='Source' load_backup_path='/opt/sybase/backups' db_user='sa' db_password='delphix' 
+                      """
+                }
+            )
+         }
+      }
+      stage('Create local BUGFIX VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit provision_vdb_by_snapshot sybase source_data_id='Ase1_master' name='asesrc1_BUGFIX' environment_id='Ase_Target' --auto_select_repository target_group_id='Bugfix' mount_point='/toolkit/asesrc1_bugfix' 
+            """
+         }
+      }  
+      stage('Create local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit provision_vdb_by_snapshot sybase source_data_id='Ase1_master' name='asesrc1_MASK' environment_id='Ase_Target' --auto_select_repository target_group_id='MaskGC' mount_point='/toolkit/asesrc1_mask'
+            """
+         }
+      }   
+      stage('Run Masking jobs') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit execute_masking_job engine_id=cce2 masking_job_id='Sybase_QA_Masking' 
+            """
+         }
+      }   
+      stage('Bookmark local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit create_bookmark vdb_id="asesrc1_MASK" name="PIT \$(date -u)" 
+            """
+         }
+      }     
+      stage('Create local DEV and QA VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Create_DEV_vdb: {
+                      sh """
+                         /root/dct-toolkit provision_vdb_by_snapshot sybase source_data_id='asesrc1_MASK' name='asesrc1_DEV' environment_id='Ase_Target' --auto_select_repository target_group_id='DEV' mount_point='/toolkit/asesrc1_dev'
+                      """
+                },
+                Create_QA_vdb: {
+                      sh """
+                         /root/dct-toolkit provision_vdb_by_snapshot sybase source_data_id='asesrc1_MASK' name='asesrc1_QA' environment_id='Ase_Target' --auto_select_repository target_group_id='DEV' mount_point='/toolkit/asesrc1_qa'
+                      """
+                }
+            )
+         }
+      }  
+   }
+}

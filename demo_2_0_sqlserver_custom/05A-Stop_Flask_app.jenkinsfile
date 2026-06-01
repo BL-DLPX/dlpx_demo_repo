@@ -1,0 +1,22 @@
+//
+// Pipeline to Stop Flask App
+//
+// Demo:  MSSQL Flask Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'appserver' }
+   stages {
+      stage('Stop App Servers') {
+         steps {
+            sh '''
+            /root/mssql_demo/shutdown_mssql_demo.sh
+            '''
+         }
+      }
+   }
+}

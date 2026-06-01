@@ -1,0 +1,31 @@
+//
+// Pipeline to Initialize DB and start Flask App
+//
+// Demo:  Postgres Flask Demo 2.0
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'appserver' }
+   stages {
+      stage('Create and seed DB tables') {
+         steps {
+            sh """
+            systemctl restart docker
+            /root/postgres_demo/initialize_database001.sh
+            /root/postgres_demo/initialize_database002.sh
+            """
+         }
+      }
+      stage('Start App Servers') {
+         steps {
+            sh """
+            /root/postgres_demo/restart_postgres_demo.sh
+            """
+         }
+      }
+   }
+}

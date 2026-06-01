@@ -1,0 +1,22 @@
+//
+// Pipeline to Stop Flask App
+//
+// Demo:  Postgres Flask Demo 2.0
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'appserver' }
+   stages {
+      stage('Stop App Servers') {
+         steps {
+            sh """
+            /root/postgres_demo/shutdown_postgres_demo.sh
+            """
+         }
+      }
+   }
+}

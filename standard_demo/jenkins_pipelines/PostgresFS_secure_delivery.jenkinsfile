@@ -1,0 +1,83 @@
+//
+// Pipeline for Secure Delivery of Postgres/Filesystem application datasource - DCT Version
+//
+// Demo:  Standard Demo
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+   agent { label 'devops' }
+   stages {
+      stage('Delete previous bookmarks') {
+         agent { label 'devops' }
+         steps {
+            sh """
+            /home/delphix/dct-toolkit delete_bookmark bookmark_id='CMS_MASK_after_masking' || true
+            """
+         }
+      }
+      stage('Snap Production') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Snap_Postgres: {
+                      sh "/home/delphix/mask_read_prod.sh"
+                      sh "/home/delphix/dct-toolkit snapshot_dsource dsource_id='Postgres_master'"
+                    },
+                Snap_FS: {
+                      sh "/home/delphix/dct-toolkit snapshot_dsource dsource_id='AppFS_master'"
+                }
+            )
+          }
+      }
+      stage('Refresh VDBgroup CMS_MASK') {
+         agent { label 'devops' }
+         steps {
+            sh """
+            /home/delphix/dct-toolkit refresh_vdb_group_by_snapshot vdb_group_id='CMS_MASK'
+            """
+         }
+      }
+      stage('Run MASK job') {
+         agent { label 'devops' }
+         steps {
+            sh "/home/delphix/mask_read_mask.sh"
+            sh "/home/delphix/dct-toolkit execute_masking_job engine_id=CCE1 masking_job_id='Mask anagrafe'"
+            sh "/home/delphix/mask_read_mask.sh"
+         }
+      }
+      stage('Bookmark VDBgroup CMS_MASK') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /home/delphix/dct-toolkit create_bookmark vdb_group_id='CMS_MASK' name='CMS_MASK_after_masking'
+            """
+         }
+      }
+      stage('Refresh VDBgroups CMS_DEV and CMS_QA from a Bookmark') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Refresh_CMS_QA: {
+                      sh """
+                         /home/delphix/dct-toolkit refresh_vdb_group vdb_group_id='CMS_QA' bookmark_id='CMS_MASK_after_masking'
+                      """
+                    },
+                Refresh_CMS_DEV: {
+                      sh """
+                         /home/delphix/dct-toolkit refresh_vdb_group vdb_group_id='CMS_DEV' bookmark_id='CMS_MASK_after_masking'
+                      """
+                }
+            )
+         }
+      }    
+      stage('Read data from DEV and QA') {
+         agent { label 'devops' }
+         steps {
+            sh "/home/delphix/mask_read_dev_qa.sh"
+         }
+      }
+   }
+}

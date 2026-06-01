@@ -1,0 +1,185 @@
+//
+// Pipeline to show Secure Change in Production via test apply on Hotfix
+//
+// Demo:  Digital Bank Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+
+   agent { label 'devops' }
+
+   stages {
+      stage('Snap #1 Production') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Snap_source_bank: {
+                      sh """
+                         /root/dct-toolkit snapshot_dsource dsource_id='Postgres_bank'
+                      """
+                },
+                Snap_source_credit: {
+                      sh """
+                         /root/dct-toolkit snapshot_dsource dsource_id='Postgres_credit'
+                      """
+                }
+            )
+         }
+      }
+      stage('Enable Hotfix environment') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit enable_vdb_group vdb_group_id='Bankapp_HOTFIX'
+            """
+         }
+      }
+      stage('Refresh Hotfix from Production') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit refresh_vdb_group_by_snapshot vdb_group_id='Bankapp_HOTFIX'
+            """
+         }
+      }
+      stage('Bookmark Hotfix environment before test change') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit create_bookmark vdb_group_id='Bankapp_HOTFIX' name="Bookmark before test Change \$(date -u)"
+            """
+         }
+      }
+      stage("Apply change to Hotfix"){
+         agent { label 'devops' }
+         steps{
+            script {
+               def rc = sh(returnStatus: true, script: 'echo "Apply change to Hotfix"')
+               if (rc != 0) {
+                  echo "Error: Apply Change to Hotfix exited with status ${rc}"
+                  echo "Send High-importance Alert. Change apply cannot continue."
+                  error('Aborting pipeline.')
+               } else {
+                  echo "Apply Change to Hotfix  executed successfully"
+               }
+            }
+         }
+      }
+      stage("Test Change on Hotfix"){
+         agent { label 'devops' }
+         steps{
+            script {
+               def test_hotfix = sh(returnStatus: true, script: 'echo "Test Change on Hotfix"; exit 0')
+               if (test_hotfix != 0) {
+                  echo "Error: Test Change on Hotfix exited with status ${test_hotfix}"
+                  echo "Send Critical Alert. Problem with Change. Change apply cannot continue."
+                  error('Aborting pipeline.')
+               } else {
+                        echo "Test Change on Hotfix  executed successfully"
+               }
+               env.test_hotfix = test_hotfix
+            }
+         }
+      }
+      stage('Bookmark Hotfix environment after test change') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit create_bookmark vdb_group_id='Bankapp_HOTFIX' name="Bookmark after test Change \$(date -u)"
+            """
+         }
+      }
+      stage('Snap #2 Production') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Snap_source_bank: {
+                      sh """
+                         /root/dct-toolkit snapshot_dsource dsource_id='Postgres_bank'
+                      """
+                },
+                Snap_source_credit: {
+                      sh """
+                         /root/dct-toolkit snapshot_dsource dsource_id='Postgres_credit'
+                      """
+                }
+            )
+         }
+      }
+      stage('Rewind Hotfix to latest Production Snapshot') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit refresh_vdb_group_by_snapshot vdb_group_id='Bankapp_HOTFIX'
+            """
+         }
+      }
+      stage('Bookmark Hotfix environment before production change') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit create_bookmark vdb_group_id='Bankapp_HOTFIX' name="Bookmark before production Change \$(date -u)"
+            """
+         }
+      }
+      stage("Apply Change to Production"){
+         steps{
+            script {
+               def apply_prod = sh(returnStatus: true, script: 'echo "Apply change to Hotfix"')
+               if (apply_prod != 0) {
+                  echo "Error: Apply Change to Production exited with status ${apply_prod}"
+                  echo "Send Critical Alert. Problem with Change in Prodution."
+                  echo "Send Critical Alert. Need immediate attention and action."
+                  error('Aborting pipeline.')
+               } else {
+                  echo "Apply Change to Production  executed successfully"
+               }
+            env.apply_prod = apply_prod
+            }
+         }
+      }
+      stage("Test Change on Production"){
+         steps{
+            script {
+               def test_prod = sh(returnStatus: true, script: 'echo "Test Change on Production"; exit 0')
+               if (test_prod != 0) {
+                  echo "Error: Test Change on Production exited with status ${test_prod}"
+                  echo "Send Critical Alert. Problem with Test Change in Prodution."
+                  echo "Send Critical Alert. Need immediate attention and action."
+                  error('Aborting pipeline.')
+               } else {
+                  echo "Test Change on Production  executed successfully"
+               }
+               env.test_prod = test_prod
+            }
+         }
+      }
+      stage('Snap #3 Production') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Snap_source_bank: {
+                      sh """
+                         /root/dct-toolkit snapshot_dsource dsource_id='Postgres_bank'
+                      """
+                },
+                Snap_source_credit: {
+                      sh """
+                         /root/dct-toolkit snapshot_dsource dsource_id='Postgres_credit'
+                      """
+                }
+            )
+         }
+      }
+      stage('Disable Hotfix environment') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit disable_vdb_group vdb_group_id='Bankapp_HOTFIX'
+            """
+         }
+      }
+   }
+}

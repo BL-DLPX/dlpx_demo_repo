@@ -1,0 +1,48 @@
+//
+// Pipeline to destroy local Demo environment  - Oracle single instance
+//
+// Demo:  Standard Demo 2.0
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Delete local VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Delete_DEV: {
+                      sh """
+                         /root/dct-toolkit delete_vdb vdb_id='orcl_dev' 
+                      """
+                },
+                Delete_QA: {
+                      sh """
+                         /root/dct-toolkit delete_vdb vdb_id='orcl_qa' 
+                      """
+                }
+            )
+         }
+      }
+      stage('Delete local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit delete_vdb vdb_id='orcl_mask'
+            """
+         }
+      }
+      stage('Delete dsource') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit delete_dsource  dsource_id='orcl_master'
+            """
+         }
+      }
+
+   }
+}

@@ -1,0 +1,71 @@
+pipeline {
+    agent { label 'devops' }
+
+// Note: All variables should be updated with your Delphix configuration
+    environment {
+        REPO_URL = 'https://github.com/delphix-demo/cloudshare.git'
+        DCT_CLI = '/root/dct-toolkit' // Path to DCT CLI
+        LB_CLI = 'liquibase'
+        DB_URL = 'jdbc:postgresql://10.160.1.74:7432/delphixdb'
+        DB_USER = 'delphix'
+        DB_PASS = 'delphix'
+        CHANGE_FILE = './demo_liquibase/simple-lb-demo/create-table.sql'
+        SLACK_WEBHOOK = credentials('slack-webhook') // Store your webhook in Jenkins Credentials
+    }
+
+    stages {
+        stage('Checkout Database Changes') {
+            steps {
+                git branch: 'main', url: "${REPO_URL}"
+            }
+        }
+
+        stage('Refresh Postgres_QA VDB from MASK') {
+            steps {
+                sh """
+                ${DCT_CLI} refresh_vdb_by_snapshot vdb_id=Postgres_QA
+                """
+            }
+        }
+
+        stage('Update Postgres_QA VDB with Liquibase') {
+            steps {
+                sh """
+                ${LB_CLI} \
+                  --url=${DB_URL} \
+                  --username=${DB_USER} --password=${DB_PASS} \
+                  --changeLogFile=${CHANGE_FILE} \
+                  update
+                """
+            }
+        }
+
+        stage('Notify Slack of Result') {
+            steps {
+                script {
+                    def payload = """{
+                        "text": ":white_check_mark: Database update successful on *Postgres_QA* using *${CHANGE_FILE}*"
+                    }"""
+                    sh """
+                    curl -X POST -H 'Content-type: application/json' \
+                         --data '${payload}' ${SLACK_WEBHOOK}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                def failPayload = """{
+                    "text": ":x: Database update FAILED on *Postgres_QA*. Please investigate."
+                }"""
+                sh """
+                curl -X POST -H 'Content-type: application/json' \
+                     --data '${failPayload}' ${SLACK_WEBHOOK}
+                """
+            }
+        }
+    }
+}

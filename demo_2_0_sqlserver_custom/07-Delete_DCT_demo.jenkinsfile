@@ -1,0 +1,38 @@
+//
+// Pipeline to destroy DCT environment
+//
+// Demo:  MSSQL Flask Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Delete SQL Server Source environment') {
+         agent { label 'devops' }
+         steps {    
+            sh '''
+               /root/dct-toolkit delete_environment environment_id='SQL Server Source'
+            '''
+         }
+      }      
+      stage('Delete SQL Server Staging environment') {
+         agent { label 'devops' }
+         steps {
+            sh '''
+               /root/dct-toolkit delete_environment environment_id='SQL Server Staging' 
+            '''
+         }
+      }
+      stage('Unregister engines from DCT') {
+         agent { label 'devops' }
+         steps {
+            sh '''
+                /root/dct-toolkit unregister_engine engine_id=sourcecde 
+                #/root/dct-toolkit unregister_engine engine_id=cce 
+            '''
+         }
+      }
+   }
+}

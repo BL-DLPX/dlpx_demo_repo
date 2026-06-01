@@ -1,0 +1,8 @@
+{
+    "favorites.resources": [
+        {
+            "filePath": "demo_2_0_sqlserver_custom/01B-Create_local_demo_environment.jenkinsfile",
+            "group": "Default"
+        }
+    ]
+}

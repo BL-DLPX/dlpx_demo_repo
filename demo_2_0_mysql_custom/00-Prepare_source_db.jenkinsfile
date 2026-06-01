@@ -1,0 +1,23 @@
+//
+// Pipeline to prepare Source DB for Demo
+//
+// Demo:  MySQL Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Create source DB tables') {
+         agent { label 'devops' }
+         steps {
+            sh """
+            mysql -h 10.160.3.20 -P 3306 -u delphix -pDelphix_123! -e "create database database001;"
+            """
+         }
+      }
+   }
+}

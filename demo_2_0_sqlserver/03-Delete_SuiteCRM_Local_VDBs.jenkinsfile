@@ -1,0 +1,31 @@
+//
+// Pipeline to destroy local SuiteCRM user VDBs
+//
+// Demo:  Standard Demo 2.0
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+// 2025 (c) Delphix - Stuart Williams (stuart)@perforce.com)
+//
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Delete User VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Delete_DEV: {
+                      sh '''
+                         /root/dct-toolkit delete_vdb  vdb_id='suitecrm-dev' 
+                      '''
+                },
+                Delete_QA: {
+                      sh '''
+                         /root/dct-toolkit delete_vdb  vdb_id='suitecrm-qa' 
+                      '''
+                }
+            )
+         }
+      }
+   }
+}

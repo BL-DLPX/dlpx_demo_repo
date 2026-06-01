@@ -1,0 +1,46 @@
+//
+// Pipeline to prepare Source DB for Demo
+//
+// Demo:  Postgres Drupal Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Prepare demo library') {
+         agent { label 'appserver' }
+         steps {
+            sh """
+            rm -rf /home/delphix/drupal_demo
+            git clone git@github.com:delphix-demo/postgres_drupal_demo.git /home/delphix/drupal_demo
+            tar -xzvf /home/delphix/drupal_demo/_demo_dump/drupal_prod_files_V11.2.5_base.tar.gz -C /home/delphix
+            sshpass -p 'Delphix_123!' scp /home/delphix/drupal_demo/_demo_dump/postgres_drupal_11.2.5_dump.sql root@10.160.1.141:/tmp
+            """
+         }
+      }
+      stage('Create source DB tables') {
+         agent { label 'devops' }
+         steps {
+            sh """
+psql -p 5432 -h 10.160.1.29 -U postgres -d postgres <<EOF 
+DROP DATABASE IF EXISTS database001;  
+CREATE DATABASE database001;
+EOF
+"""
+         }
+      }
+      stage('Restore DB from postgres dump') {
+         agent { label 'devops' }
+         steps {
+            sh """
+            psql -U postgres -h 10.160.1.29 -d database001 < /tmp/postgres_drupal_11.2.5_dump.sql
+            rm -f /tmp/postgres_drupal_11.2.5_dump.sql
+            """
+         }
+      }   
+   }
+}

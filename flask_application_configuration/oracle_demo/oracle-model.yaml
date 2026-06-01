@@ -1,0 +1,150 @@
+Customer:
+  table_name: 'customer'
+  plural: 'Customers'
+  columns:
+    id:
+      data_type: 'Integer'
+      sequence: 'customer_seq'
+      primary_key: True
+    cust_no:
+      data_type: 'String'
+      data_size: 80
+      nullable: False
+      unique: True
+      doc: 'upc_a-en_US'
+    full_name:
+      data_type: 'String'
+      data_size: 100
+      nullable: False
+      unique: False
+      doc: 'name-en_US'
+      identity: True
+    DOB:
+      data_type: 'Date'
+      nullable: False
+      unique: False
+      doc: 'date-en_US'
+    city_birth:
+      data_type: 'String'
+      data_size: 200
+      nullable: False
+      unique: False
+      doc: 'city-en_US'
+    SSN:
+      data_type: 'String'
+      data_size: 20
+      nullable: False
+      unique: True
+      doc: 'ssn-en_US'
+    address:
+      data_type: 'String'
+      data_size: 200
+      nullable: False
+      unique: False
+      doc: 'address-en_US'
+    city:
+      data_type: 'String'
+      data_size: 200
+      nullable: False
+      unique: False
+      doc: 'city-en_US'
+    country:
+      data_type: 'String'
+      data_size: 2
+      nullable: False
+      unique: False
+      doc: 'country_code-en_US'
+    phone:
+      data_type: 'String'
+      data_size: 200
+      nullable: True
+      unique: False
+      doc: 'phone_number-en_US'
+    email:
+      data_type: 'String'
+      data_size: 200
+      nullable: True
+      unique: False
+      doc: 'ascii_email-en_US'
+  relationships:
+    plates:
+      related_class: 'Plate'
+      back_populates: 'customer'
+      lazy: 'dynamic'
+      type: child
+Plate:
+  table_name: 'plate'
+  plural: 'Plates'
+  columns:
+    id:
+      data_type: 'Integer'
+      sequence: 'plate_seq'
+      primary_key: True
+    plate_num:
+      data_type: 'String'
+      data_size: 80
+      nullable: False
+      unique: True
+      doc: 'license_plate-en_US'
+      identity: True
+    production_date:
+      data_type: 'Date'
+      nullable: False
+      unique: False
+      doc: 'date_of_birth-en_US'
+    cust_no:
+      data_type: 'String'
+      data_size: 80
+      foreign_key: 'customer.cust_no'
+      index: True
+      nullable: False
+      unique: False
+      doc: 'upc_a-en_US'
+  relationships:
+    customer:
+      related_class: 'Customer'
+      back_populates: 'plates'
+      type: parent
+    plate_history:
+      related_class: 'Plate_History'
+      back_populates: 'plate'
+      lazy: 'dynamic'
+      type: child
+Plate_History:
+  table_name: 'plate_history'
+  plural: false
+  columns:
+    id:
+      data_type: 'Integer'
+      sequence: 'plate_history_seq'
+      primary_key: True
+    plate_num:
+      data_type: 'String'
+      data_size: 80
+      nullable: False
+      unique: false
+      foreign_key: 'plate.plate_num'
+      doc: 'license_plate-en_US'
+    date:
+      data_type: 'Date'
+      nullable: False
+      unique: False
+      doc: 'date-en_US'
+    operation_type:
+      data_type: 'String'
+      data_size: 200
+      nullable: False
+      unique: False
+      identity: True
+      doc: 'color_name-en_US'
+    description:
+      data_type: 'String'
+      data_size: 200
+      nullable: False
+      unique: False
+      doc: 'catch_phrase-en_US'
+  relationships:
+    plate:
+      related_class: 'Plate'
+      back_populates: 'plate_history'
+      type: parent

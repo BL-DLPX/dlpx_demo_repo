@@ -1,0 +1,13 @@
+#
+# Test pipeline - Print DCT version
+#
+
+pool:
+  name: Demo Pipelines
+  demands:
+   - agent.name -equals dct
+
+jobs:
+- job: "Get_DCT_version"
+  steps:
+  - bash: "/root/dct-toolkit get_product_info"

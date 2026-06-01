@@ -1,0 +1,47 @@
+//
+// Pipeline to destroy local Demo environment
+//
+// Demo:  MSSQL Flask Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Delete local VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Delete_DEV: {
+                      sh '''
+                         /root/dct-toolkit delete_vdb  vdb_id='mssql_dev' 
+                      '''
+                },
+                Delete_QA: {
+                      sh '''
+                         /root/dct-toolkit delete_vdb  vdb_id='mssql_qa' 
+                      '''
+                }
+            )
+         }
+      }
+      stage('Delete local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh '''
+               /root/dct-toolkit delete_vdb  vdb_id='mssql_mask'
+            '''
+         }
+      }
+      stage('Delete dsource') {
+         agent { label 'devops' }
+         steps {
+            sh '''
+               /root/dct-toolkit delete_dsource  dsource_id='mssql_master'
+            '''
+         }
+      }
+   }
+}

@@ -1,0 +1,36 @@
+//
+// Pipeline to Stop Drupal Web servers
+//
+// Demo:  Postgres Drupal Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'appserver' }
+   stages {
+      stage('Stop App Servers PROD') {
+         steps {
+            sh """
+            /home/delphix/drupal_demo/stop_drupal_prod.sh      
+            """
+         }
+      }
+      stage('Stop App Server DEV') {
+         steps {
+            sh """
+            /home/delphix/drupal_demo/stop_drupal_dev.sh            
+            """
+         }
+      }   
+      stage('Stop App Server QA') {
+         steps {
+            sh """
+            /home/delphix/drupal_demo/stop_drupal_qa.sh            
+            """
+         }
+      } 
+   }
+}

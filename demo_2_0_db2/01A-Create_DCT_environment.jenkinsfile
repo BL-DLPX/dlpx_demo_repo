@@ -1,0 +1,34 @@
+//
+// Pipeline to Create DCT environment
+//
+// Demo:  DB2 Demo 2.0
+//
+// 2026 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   environment {
+      RPWD = credentials('Root_pwd')
+   }
+   stages {
+      stage('Register demo engines into DCT') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Register_source_cde: {
+                      sh """
+                         /root/dct-toolkit register_engine hostname=10.160.1.18 name=sourcecde username=admin password=\$RPWD --insecure_ssl  
+                      """
+                },
+                Register_CCE: {
+                      sh """
+                         /root/dct-toolkit register_engine hostname=10.160.1.160 name=cce masking_username=admin masking_password=\$RPWD --insecure_ssl 
+                      """
+                }
+            )
+         }
+      }
+   }
+}

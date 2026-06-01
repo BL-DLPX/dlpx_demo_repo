@@ -1,0 +1,147 @@
+//
+// Pipeline to create local Demo environment
+//
+// Demo:  Postgres Drupal Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Register local environments') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Register_postgres_source_1: {
+                      sh """
+                         /root/dct-toolkit create_environment engine_id="sourcecde" name="Postgres Source 1" os_name="UNIX" hostname="10.160.1.29" toolkit_path="/toolkit" username="postgres" password="Delphix_123!" description="Postgres source VM #1" 
+                         """
+                },
+                Register_postgres_staging: {
+                      sh """
+                         /root/dct-toolkit create_environment engine_id="sourcecde" name="Postgres Staging" os_name="UNIX" hostname="10.160.1.74" toolkit_path="/toolkit" username="postgres" password="Delphix_123!" description="Postgres staging VM"     
+                         """
+                },
+                Register_appserver: {
+                      sh """
+                         /root/dct-toolkit create_environment engine_id="sourcecde" name="App Server" os_name="UNIX" hostname="10.160.1.142" toolkit_path="/toolkit" username="delphix" password="Delphix_123!" description="Drupal Appl Server"     
+                         """
+                }            
+            )
+         }
+      }
+      stage('Create Postgres Source') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit create_postgres_source environment_id="Postgres Source 1" name="Postgres_database001" repository_id="Postgres vFiles (16.1)" 
+            """
+         }
+      }
+      stage('Link Dsource') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit link_appdata_database source_id="Postgres_database001" group_id="Source" link_type=AppDataStaged staging_environment="Postgres Source 1" environment_user="postgres" sync_parameters='{"resync": true}' parameters='{"mountLocation":"/mnt/provision/pg_master","externalBackup":[], "delphixInitiatedBackupFlag":true, "privilegedOsUser":"", "delphixInitiatedBackup":[{"userName":"postgres","userPass":"Delphix_123!", "sourceHostAddress":"10.160.1.29", "postgresSourcePort":5432}], "singleDatabaseIngestionFlag":false,"singleDatabaseIngestion":[], "postgresPort":5433, "configSettingsStg":[]}' 
+            """
+         }
+      }
+      stage('Create local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit provision_vdb_by_snapshot postgres source_data_id='Postgres_database001' name='Postgres_database001_MASK' postgres_port='5444' environment_id='Postgres Staging' environment_user_id='postgres' --auto_select_repository target_group_id='MaskGC' mount_point='/mnt/provision/postgres_MASK' --masked             
+            """
+         }
+      }
+      stage('Run Masking job (dummy)') {
+         agent { label 'devops' }
+         steps {
+            sh """
+           """
+         }
+      }   
+      stage('Snap local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit snapshot_vdb vdb_id='Postgres_database001_MASK'                       
+            """
+         }
+      }  
+      stage('Create local VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Create_DEV: {
+                      sh """
+                        /root/dct-toolkit provision_vdb_by_snapshot postgres source_data_id='Postgres_database001_MASK' name='Postgres_database001_DEV' postgres_port='6432' environment_id='Postgres Staging' environment_user_id='postgres' --auto_select_repository target_group_id='DEV' mount_point='/mnt/provision/postgres_DEV'  
+                      """
+                },
+                Create_QA: {
+                      sh """
+                        /root/dct-toolkit provision_vdb_by_snapshot postgres source_data_id='Postgres_database001_MASK' name='Postgres_database001_QA' postgres_port='7432' environment_id='Postgres Staging' environment_user_id='postgres' --auto_select_repository target_group_id='QA' mount_point='/mnt/provision/postgres_QA'
+                      """
+                }
+            )
+         }
+      }
+      stage('Create Appserver Source') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit create_app_data_source environment_id="App Server" name="appserver" type="DIRECT" path="/home/delphix/_drupal_prod_files" repository_id="Unstructured Files" 
+            """
+         }
+      }
+      stage('Link Appserver Dsource') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit link_appdata_database source_id="appserver" group_id="Source" link_type=AppDataDirect staging_environment="App Server" environment_user="delphix" sync_parameters='{"resync": true}' parameters='{}'            
+            """
+         }
+      }
+      stage('Create local MASK VFILE') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit provision_vdb_by_snapshot appdata source_data_id='appserver' name='appserver_MASK' environment_id='App Server' environment_user_id='delphix' --auto_select_repository target_group_id='MaskGC' mount_point='/mnt/provision/appserver_MASK' --masked             
+            """
+         }
+      }
+      stage('Create local VFILEs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Create_DEV: {
+                      sh """
+                        /root/dct-toolkit provision_vdb_by_snapshot appdata source_data_id='appserver_MASK' name='appserver_DEV' environment_id='App Server' environment_user_id='delphix' --auto_select_repository target_group_id='DEV' mount_point='/mnt/provision/appserver_DEV' configure_clone='[{"shell":"bash", "command":"/home/delphix/drupal_demo/start_drupal_dev.sh", "name": "Cfg and start DEV"}]' pre_refresh='[{"shell":"bash", "command":"/home/delphix/drupal_demo/stop_drupal_dev.sh", "name": "Stop DEV"}]' post_refresh='[]' pre_snapshot='[]' post_snapshot='[]' pre_start='[]' post_start='[{"shell":"bash", "command":"/home/delphix/drupal_demo/start_drupal_dev.sh", "name": "Start DEV"}]' pre_stop='[{"shell":"bash", "command":"/home/delphix/drupal_demo/stop_drupal_dev.sh", "name": "Stop DEV"}]' post_stop='[]' pre_self_refresh='[{"shell":"bash", "command":"/home/delphix/drupal_demo/stop_drupal_dev.sh", "name": "Stop DEV"}]'  post_self_refresh='[{"shell":"bash", "command":"/home/delphix/drupal_demo/start_drupal_dev.sh", "name": "Start DEV"}]'            
+                      """
+                },
+                Create_QA: {
+                      sh """
+                        /root/dct-toolkit provision_vdb_by_snapshot appdata source_data_id='appserver_MASK' name='appserver_QA' environment_id='App Server' environment_user_id='delphix' --auto_select_repository target_group_id='QA' mount_point='/mnt/provision/appserver_QA' configure_clone='[{"shell":"bash", "command":"/home/delphix/drupal_demo/start_drupal_qa.sh", "name": "Cfg and start QA"}]' pre_refresh='[{"shell":"bash", "command":"/home/delphix/drupal_demo/stop_drupal_qa.sh", "name": "Stop QA"}]' post_refresh='[]' pre_snapshot='[]' post_snapshot='[]' pre_start='[]' post_start='[{"shell":"bash", "command":"/home/delphix/drupal_demo/start_drupal_qa.sh", "name": "Start QA"}]' pre_stop='[{"shell":"bash", "command":"/home/delphix/drupal_demo/stop_drupal_qa.sh", "name": "Stop QA"}]' post_stop='[]' pre_self_refresh='[{"shell":"bash", "command":"/home/delphix/drupal_demo/stop_drupal_qa.sh", "name": "Stop QA"}]' post_self_refresh='[{"shell":"bash", "command":"/home/delphix/drupal_demo/start_drupal_qa.sh", "name": "Start QA"}]'
+            
+                      """
+                }
+            )
+         }
+      }
+      stage('Create VDB Groups MASK, DEV and QA') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit create_vdb_group name='Drupal_MASK' vdb_ids='Postgres_database001_DEV,appserver_MASK'
+               /root/dct-toolkit create_vdb_group name='Drupal_DEV' vdb_ids='Postgres_database001_DEV,appserver_DEV'
+               /root/dct-toolkit create_vdb_group name='Drupal_QA' vdb_ids='Postgres_database001_QA,appserver_QA'
+            """
+         }
+      }
+   }
+}
+
+

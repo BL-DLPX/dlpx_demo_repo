@@ -1,0 +1,110 @@
+pipeline {
+    agent { label 'devops' }
+
+// Note: All variables should be updated with your Delphix configuration
+    environment {
+        REPO_URL = 'https://github.com/delphix-demo/cloudshare.git'
+        DCT_CLI = '/root/dct-toolkit'
+        LB_CLI = 'liquibase'
+        DB_URL = 'jdbc:postgresql://10.160.1.74:5445/delphixdb'
+        DB_USER = 'delphix'
+        DB_PASS = 'delphix'
+        CHANGE_FILE = './demo_liquibase/simple-lb-demo/create-table.sql'
+        SNAPSHOT_REF = 'prior-snapshot.json'
+        SLACK_WEBHOOK = credentials('slack-webhook')
+    }
+
+    stages {
+        stage('Checkout Database Changes') {
+            steps {
+                git branch: 'main', url: "${REPO_URL}"
+            }
+        }
+
+        stage('Refresh Postgres_INTEG VDB from MASK') {
+            steps {
+                sh """
+                ${DCT_CLI} refresh_vdb_by_snapshot vdb_id=Postgres_INTEG
+                """
+            }
+        }
+
+        stage('Create Liquibase Snapshot from baseline state') {
+            steps {
+                sh """
+                ${LB_CLI} \
+                  --url=${DB_URL} \
+                  --username=${DB_USER} --password=${DB_PASS} \
+                  snapshot --snapshot-format=JSON --output-file=${SNAPSHOT_REF}
+                """
+            }
+        }
+
+        stage('Update Postgres_INTEG VDB with Liquibase') {
+            steps {
+                sh """
+                ${LB_CLI} \
+                  --url=${DB_URL} \
+                  --username=${DB_USER} --password=${DB_PASS} \
+                  --changeLogFile=${CHANGE_FILE} \
+                  update
+                """
+            }
+        }
+
+        stage('Diff Schema Changes with Liquibase') {
+            steps {
+                sh """
+                ${LB_CLI} \
+                  --reference-url="offline:postgres?snapshot="${SNAPSHOT_REF} \
+                  --url=${DB_URL} \
+                  --username=${DB_USER} --password=${DB_PASS} \
+                  diff > diff.txt || true
+                cat diff.txt
+                """
+            }
+        }
+
+        stage('Changes? Run Tests') {
+            when {
+                expression {
+                    return fileExists('diff.txt') && readFile('diff.txt').contains("Unexpected Column(s):") || 
+                        fileExists('diff.txt') && readFile('diff.txt').contains("Missing Table(s):")
+                }
+            }
+            steps {
+                script {
+                    echo "Changes detected. Running dummy integration tests..."
+                    def testPassed = new Random().nextBoolean()
+
+                    if (testPassed) {
+                        slackNotify(":white_check_mark: Dummy integration tests PASSED after changes to Postgres_INTEG.")
+                    } else {
+                        slackNotify(":x: Dummy integration tests FAILED after changes to Postgres_INTEG.")
+                        error("Dummy integration test failure")
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                slackNotify(":white_check_mark: Pipeline SUCCEEDED for Postgres_INTEG.")
+            }
+        }
+        failure {
+            script {
+                slackNotify(":x: Pipeline FAILED for Postgres_INTEG.")
+            }
+        }
+    }
+}
+
+def slackNotify(String message) {
+    sh """
+    curl -X POST -H 'Content-type: application/json' \
+         --data '{"text": "${message}"}' ${SLACK_WEBHOOK}
+    """
+}

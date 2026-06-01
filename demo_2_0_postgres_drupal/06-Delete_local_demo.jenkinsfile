@@ -1,0 +1,83 @@
+//
+// Pipeline to destroy local Demo environment
+//
+// Demo:  Postgres Drupal Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Delete VDB Groups MASK, DEV and QA') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit delete_vdb_group vdb_group_id='Drupal_MASK' 
+               /root/dct-toolkit delete_vdb_group vdb_group_id='Drupal_DEV'
+               /root/dct-toolkit delete_vdb_group vdb_group_id='Drupal_QA'
+            """
+         }
+      }
+      stage('Destroy DEV and QA VDB') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Delete_DEV: {
+                      sh "/root/dct-toolkit delete_vdb vdb_id='Postgres_database001_DEV'"
+                },
+                Delete_QA: {
+                      sh "/root/dct-toolkit delete_vdb vdb_id='Postgres_database001_QA'"
+                }
+            )
+         }
+      }
+      stage('Destroy Postgres MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit delete_vdb vdb_id='Postgres_database001_MASK'"
+         }
+      }
+      stage('Destroy appserver DEV and QA VDB') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Delete_DEV: {
+                      sh "/root/dct-toolkit delete_vdb vdb_id='appserver_DEV'"
+                },
+                Delete_QA: {
+                      sh "/root/dct-toolkit delete_vdb vdb_id='appserver_QA'"
+                }
+            )
+         }
+      }
+      stage('Destroy appserver MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit delete_vdb vdb_id='appserver_MASK'"
+         }
+      }
+      stage('Delete dsource') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit delete_dsource  dsource_id='Postgres_database001'
+               /root/dct-toolkit delete_dsource  dsource_id='appserver'
+               sleep 20 
+            """
+         }
+      }
+      stage('Delete source') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit delete_source  source_id='Postgres_database001'
+               /root/dct-toolkit delete_source  source_id='appserver'
+            """
+         }
+      }
+
+   }
+}

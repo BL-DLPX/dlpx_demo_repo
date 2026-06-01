@@ -1,0 +1,47 @@
+//
+// Pipeline to start Mongodb Resources - DCT version
+//
+// Demo:  Standard Demo
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+   agent { label 'devops' }
+   stages {
+      stage('enable Mongodb environments') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit enable_environment environment_id='Mongodb_Target'"
+            sh "/root/dct-toolkit enable_environment environment_id='Mongodb_Source'"
+            sh "exit 0"
+         }
+      }
+      stage('start Mongodb DSOURCE') {
+         agent { label 'devops' }
+         steps {
+            sh "/root/dct-toolkit enable_dsource dsource_id='Mongodb_master'"
+            sh "exit 0"
+         }
+      }
+      stage('start Mongodb VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Start_MASK: {
+                      sh "/root/dct-toolkit enable_vdb vdb_id='Mongodb_MASK'"
+                      sh "exit 0"
+                    },
+                Start_QA: {
+                      sh "/root/dct-toolkit enable_vdb vdb_id='Mongodb_QA'"
+                      sh "exit 0"
+                    },
+                Start_DEV: {
+                      sh "/root/dct-toolkit enable_vdb vdb_id='Mongodb_DEV'"
+                      sh "exit 0"
+                }
+            )
+         }
+      }
+   }
+}

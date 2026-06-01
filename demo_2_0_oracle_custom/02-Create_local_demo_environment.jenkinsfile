@@ -1,0 +1,121 @@
+//
+// Pipeline to create local Demo environment
+//
+// Demo:  Oracle Flask Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Register local and remote environments') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Register_oracle_source: {
+                      sh """
+                         /root/dct-toolkit create_environment engine_id="sourcecde" name="Oracle_source" os_name="UNIX" hostname="10.160.2.20" toolkit_path="/home/delphix/toolkit" username="delphix" password="delphix" description="Oracle source VM" 
+                         """
+                },
+               Register_oracle_target: {
+                      sh """
+                         /root/dct-toolkit create_environment engine_id="sourcecde" name="Oracle_target" os_name="UNIX" hostname="10.160.2.30" toolkit_path="/home/delphix/toolkit" username="delphix" password="delphix" description="Oracle target VM" 
+                         """
+                }
+            )
+         }
+      }
+      stage('Link Dsource') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit link_oracle_database source_id='orcl' name='orcl_master' group_id='Source' environment_user_id='delphix' --link_now
+            """
+         }
+      }
+      stage('Create local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit provision_vdb_by_snapshot oracle source_data_id='orcl_master' name='orcl_mask' database_name='orclmask' unique_name='orclmask' oracle_instance_name='orclmask' environment_id='Oracle_target' os_username='delphix' --auto_select_repository target_group_id='MaskGC' --masked mount_point='/mnt/provision' 
+            """
+         }
+      }
+      stage('Run Masking job - TO DO') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               #/root/dct-toolkit execute_masking_job engine_id=cce masking_job_id='Mask_job_you_created' 
+               sleep 10
+            """
+         }
+      }   
+      stage('Snap local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit snapshot_vdb vdb_id='orcl_mask'                       
+            """
+         }
+      }   
+      stage('Show masked rows MASK') {
+         agent { label 'devops' }
+         steps {
+            sh """
+source ~/.bashrc
+sqlplus delphix/delphix@10.160.2.30:1521/orclmask << EOF
+SELECT count(*) FROM delphix.CUSTOMER;
+SELECT count(*) FROM delphix.PLATE;
+SELECT count(*) FROM delphix.PLATE_HISTORY;
+EOF
+            """
+         }
+      }
+      stage('Create local DEV and QA VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Create_DEV_VDB: {
+                      sh """
+                         /root/dct-toolkit provision_vdb_by_snapshot oracle source_data_id='orcl_mask' name='orcl_dev' database_name='orcldev' unique_name='orcldev' oracle_instance_name='orcldev' environment_id='Oracle_target' os_username='delphix' --auto_select_repository target_group_id='DEV' mount_point='/mnt/provision' 
+                      """
+                },
+                Create_QA_VDB: {
+                      sh """
+                         /root/dct-toolkit provision_vdb_by_snapshot oracle source_data_id='orcl_mask' name='orcl_qa' database_name='orclqa' unique_name='orclqa' oracle_instance_name='orclqa' environment_id='Oracle_target' os_username='delphix' --auto_select_repository target_group_id='QA' mount_point='/mnt/provision' 
+                      """
+                }
+            )
+         }
+      }
+      stage('Show DEV rows') {
+         agent { label 'devops' }
+         steps {
+            sh """
+source ~/.bashrc
+sqlplus delphix/delphix@10.160.2.30:1521/orcldev << EOF
+SELECT count(*) FROM delphix.CUSTOMER;
+SELECT count(*) FROM delphix.PLATE;
+SELECT count(*) FROM delphix.PLATE_HISTORY;
+EOF
+            """
+         }
+      }   
+      stage('Show QA rows') {
+         agent { label 'devops' }
+         steps {
+            sh """
+source ~/.bashrc
+sqlplus delphix/delphix@10.160.2.30:1521/orclqa << EOF
+SELECT count(*) FROM delphix.CUSTOMER;
+SELECT count(*) FROM delphix.PLATE;
+SELECT count(*) FROM delphix.PLATE_HISTORY;
+EOF
+            """
+         }
+      }   
+   }
+}

@@ -1,0 +1,22 @@
+//
+// Pipeline to Stop Flask App
+//
+// Demo:  MySQL Flask Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'appserver' }
+   stages {
+      stage('Stop App Servers') {
+         steps {
+            sh """
+            /root/mysql_demo/shutdown_mysql_demo.sh
+            """
+         }
+      }
+   }
+}

@@ -1,0 +1,72 @@
+//
+// Pipeline to register engines, add SQL server environments, ingest SuiteCRM and created masked copy
+//
+// Demo:  Standard Demo 2.0
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+// 2025 (c) Delphix - Stuart Williams (stuart@perforce.com)
+//
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Register demo engines into DCT') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Register_Source_CDE: {
+                      sh '''
+                      /root/dct-toolkit register_engine hostname="10.160.1.18" name="sourcecde"  username="admin"  password="Delphix_123!" --insecure_ssl
+                      '''
+                },
+                Register_CCE: {
+                      sh '''
+                      /root/dct-toolkit register_engine  hostname="10.160.1.160" name="cce" masking_username="admin"  masking_password="Delphix_123!" --insecure_ssl
+                      '''
+                }
+            )
+         }
+      }
+     stage('Create SQL Server Staging environment') {
+         agent { label 'devops' }
+         steps {
+                sh '''
+                /root/dct-toolkit create_environment engine_id="sourcecde" name="SQL Server Staging" os_name="WINDOWS" hostname="10.160.1.62" connector_port="9100" username="delphix_os" password="Delphix_123$" description="SQL Server staging VM" tags="app=suitecrm"
+                '''
+             }
+         }
+     stage('Create SQL Server Source environment') {
+         agent { label 'devops' }
+         steps {    
+                 sh '''
+                /root/dct-toolkit create_environment engine_id="sourcecde" name="SQL Server Source" os_name="WINDOWS" hostname="10.160.1.22" staging_environment="SQL Server Staging" username="delphix_os" password="Delphix_123$" description="SQL Server source VM" tags="app=suitecrm"
+                '''
+             }
+         }
+     stage('Create SuiteCRM Dsource') {
+         agent { label 'devops' }
+         steps {
+                 sh '''
+                 SRCID=$(/root/dct-toolkit search_sources name="suitecrm" -cs -c id |grep -vw "id")
+                 REPO=$(/root/dct-toolkit search_environments name="SQL Server Staging" -ex=repositories |grep MSSQLSERVER | awk '{ print $1 }')
+                 STGUSER=$(/root/dct-toolkit get_environments -ex=env_users | grep "SQL Server Staging" | awk '{ print $1}')
+                 SRCUSER=$(/root/dct-toolkit get_environments -ex=env_users | grep "SQL Server Source" | awk '{ print $1}')
+
+                 /root/dct-toolkit update_repository environment_id="SQL Server Staging" repository_id="${REPO}" --is_staging
+                 /root/dct-toolkit link_mssql_database source_id="${SRCID}" ppt_repository="${REPO}" name="suitecrm db" mssql_user_environment_reference="${SRCUSER}" ppt_host_user="${STGUSER}" group_id="Source" --log_sync_enabled tags="app=suitecrm"
+                 '''
+              }
+         }
+     stage('Create Masked Master VDB') {
+         agent { label 'devops' }
+         steps {
+                 sh '''
+                 REPO=$(/root/dct-toolkit search_environments name="SQL Server Staging" -ex=repositories |grep MSSQLSERVER | awk '{ print $1 }')
+
+                 /root/dct-toolkit provision_vdb_by_snapshot mssql name="suitecrm-mask" database_name="suitecrm-mask" --masked --vdb_restart source_data_id="suitecrm db" repository_id="${REPO}" target_group_id="MaskGC" tags="app=suitecrm"
+                 '''
+              }
+         }
+    }
+}
+

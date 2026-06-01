@@ -1,0 +1,109 @@
+//
+// Pipeline to create local Demo environment
+//
+// Demo:  DB2 Demo 2.0
+//
+// 2026 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   environment {
+      RPWD = credentials('Root_pwd')
+   }
+   stages {
+      stage('Register local environments') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Register_db2_source: {
+                      sh """
+                         /root/dct-toolkit create_environment engine_id="sourcecde" name="DB2_Source" os_name="UNIX" hostname="10.160.1.23" toolkit_path="/toolkit" username="db2inst1" password="\$RPWD" description="DB2 source VM" 
+                         """
+                },
+                Register_db2_target: {
+                      sh """
+                         /root/dct-toolkit create_environment engine_id="sourcecde" name="DB2_Target" os_name="UNIX" hostname="10.160.1.63" toolkit_path="/toolkit" username="db2inst1" password="\$RPWD" description="DB2 Target VM"     
+                         """
+                }
+            )
+         }
+      }
+      stage('Modify db2_plugin.conf on Target VM') {
+         agent { label 'devops' }
+         steps {
+            sh '''
+               sshpass -p "$RPWD" ssh db2inst1@10.160.1.63 "sed -i 's/allowSourceDbOnSameInstance=False/allowSourceDbOnSameInstance=True/g' /toolkit/Delphix_COMMON*/plugin/DB2*/db2_plugin.conf"
+               #sshpass -p "$RPWD" ssh db2inst1@10.160.1.63 "cat /toolkit/Delphix_COMMON*/plugin/DB2*/db2_plugin.conf | grep allowSourceDbOnSameInstance"
+               sleep 10
+            '''
+         }
+      }
+      stage('Create DB2 Source') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit create_app_data_source name="samplestg" environment_id="DB2_Source" repository_id="db2inst1 - 12.1.3.0 - db2dec" type="STAGED" engine_id="sourcecde" parameters='{"prettyName": "samplestg", "dbName": "SAMPLE"}'
+            """
+         }
+      }
+      stage('Link Dsource') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit link_appdata_database name="db2_master" source_id="samplestg" group_id="Source" link_type=AppDataStaged staging_environment="DB2_Target" environment_user="db2inst1"  sync_parameters='{"resync": true}' parameters='{"toolkitHookFlag": false, "copyToApplyFlag": false, "monitorHADR": false, "logIngestionFlag": false, "config_settings_stg": [], "dbName": "SAMPLE", "mountLocation": "/mnt/provision", "backupPath": "/home/db2inst1", "hadrDetails": {"hadrPrimaryHostname": "10.160.1.23", "hadrPrimarySVC": "25013", "hadrStandbySVC": "25013"}}'
+            """
+         }
+      }
+      stage('Create local BUGFIX VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit provision_vdb_by_snapshot appdata source_data_id='db2_master' name='DB2_BUGFIX' environment_id='DB2_Target' environment_user_id='db2inst1' --auto_select_repository target_group_id='Bugfix' appdata_source_params='{"databaseAliasName": "DB2BUGFX" , "VDBmountLocation": "/mnt/provision/vdb", "config_settings_prov": []}'
+            """
+         }
+      }
+      stage('Create local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit provision_vdb_by_snapshot appdata source_data_id='db2_master' name='DB2_MASK' environment_id='DB2_Target' environment_user_id='db2inst1' --auto_select_repository target_group_id='MaskGC' appdata_source_params='{"databaseAliasName": "DB2MASK" , "VDBmountLocation": "/mnt/provision/vdb", "config_settings_prov": []}'
+            """
+         }
+      }
+      stage('Run Masking job') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit execute_masking_job engine_id=cce masking_job_id='Mask' 
+            """
+         }
+      }   
+      stage('Snap local MASK VDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit snapshot_vdb vdb_id='DB2_MASK'                       
+            """
+         }
+      }   
+      stage('Create DEV and QA VDBs with latest data') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Create_QA: {
+                      sh """
+                        /root/dct-toolkit provision_vdb_by_snapshot appdata source_data_id='DB2_MASK' name='DB2_QA' environment_id='DB2_Target' environment_user_id='db2inst1' --auto_select_repository target_group_id='QA' appdata_source_params='{"databaseAliasName": "DB2QA" , "VDBmountLocation": "/mnt/provision/vdb", "config_settings_prov": []}'
+                      """
+                },
+                Create_DEV: {
+                      sh """
+                        /root/dct-toolkit provision_vdb_by_snapshot appdata source_data_id='DB2_MASK' name='DB2_DEV' environment_id='DB2_Target' environment_user_id='db2inst1' --auto_select_repository target_group_id='DEV' appdata_source_params='{"databaseAliasName": "DB2DEV" , "VDBmountLocation": "/mnt/provision", "config_settings_prov": []}'
+                      """
+                }
+            )
+         }
+      } 
+   }
+}

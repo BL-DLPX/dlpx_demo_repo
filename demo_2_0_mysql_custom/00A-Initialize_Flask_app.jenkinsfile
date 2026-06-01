@@ -1,0 +1,30 @@
+//
+// Pipeline to Initialize DB and start Flask App
+//
+// Demo:  MySQL Flask Demo 2.0
+//
+// 2025 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+
+   agent { label 'appserver' }
+   stages {
+      stage('Create and seed DB tables') {
+         steps {
+            sh """
+            systemctl restart docker
+            /root/mysql_demo/initialize_database001.sh
+            """
+         }
+      }
+      stage('Start App Servers') {
+         steps {
+            sh """
+            /root/mysql_demo/restart_mysql_demo.sh
+            """
+         }
+      }
+   }
+}

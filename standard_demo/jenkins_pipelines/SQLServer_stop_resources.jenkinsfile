@@ -1,0 +1,47 @@
+//
+// Pipeline to stop Sqlserver Resources - DCT Version
+//
+// Demo:  Standard Demo
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+pipeline {
+   agent { label 'devops' }
+   stages {
+	stage('disable Sqlserver DSOURCE and VDBs') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Disable_MASK: {
+                      sh "/home/delphix/dct-toolkit disable_vdb vdb_id='Suitecrm_MASK'"
+                	},
+                Disable_QA: {
+                      sh "/home/delphix/dct-toolkit disable_vdb vdb_id='Suitecrm_QA'"
+                	},
+                Disable_DEV: {
+                      sh "/home/delphix/dct-toolkit disable_vdb vdb_id='Suitecrm_DEV'"
+                	},
+		Disable_QA_APP: {
+                      sh "/home/delphix/dct-toolkit disable_vdb vdb_id='Suitecrm_app_QA'"
+                	},
+ 		Disable_DEV_APP: {
+                      sh "/home/delphix/dct-toolkit disable_vdb vdb_id='Suitecrm_app_DEV'"
+                	},
+ 		Disable_DSOURCE: {
+                      sh "/home/delphix/dct-toolkit disable_dsource dsource_id='Suitecrm_master'"
+                	},
+		Disable_APP_DSOURCE: {
+                      sh "/home/delphix/dct-toolkit disable_dsource dsource_id='suitecrm_app'"
+                	}
+            	)
+         }
+      }
+      stage('disable Sqlserver environments') {
+         agent { label 'devops' }
+         steps {
+		sh "/home/delphix/dct-toolkit disable_environment environment_id='Sqlserver_Source'"
+            	sh "/home/delphix/dct-toolkit disable_environment environment_id='Sqlserver_Target'"
+         }
+      }
+   }
+}

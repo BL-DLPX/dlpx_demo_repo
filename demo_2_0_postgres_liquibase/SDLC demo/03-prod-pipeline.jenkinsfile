@@ -1,0 +1,147 @@
+//
+// Pipeline to prepare update Postgres PROD with changes from GitHub
+//
+// Demo:  Postgres Liquibase Demo 2.0
+//
+// 2025 (c) Delphix - Nick Mathison (nick.mathison@perforce.com) 
+//                    Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+    agent { label 'devops' }
+
+    environment {
+        REPO_URL = 'https://github.com/nick-mathison/my-database-changes.git'
+        DCT_CLI = '/root/dct-toolkit'
+        LB_CLI = 'liquibase'
+        DB_URL = 'jdbc:postgresql://10.160.1.29:5432/delphixdb'
+        DB_USER = credentials('LB_PG_USER')
+        DB_PASS = credentials('LB_PG_PASSWORD')
+        CHANGE_FILE = 'my-database-changes.sql'
+        SLACK_WEBHOOK = credentials('slack-webhook')
+    }
+
+    stages {
+
+        stage('Checkout Database Changes') {
+            steps {
+                git branch: 'main', url: "${REPO_URL}"
+            }
+        }
+
+        stage('Update PROD with Liquibase') {
+            steps {
+                sh """
+                ${LB_CLI} \
+                  --url=${DB_URL} \
+                  --username=${DB_USER} --password=${DB_PASS} \
+                  --changeLogFile=${CHANGE_FILE} \
+                  update
+                """
+            }
+        }
+
+        stage('Run Liveliness Tests') {
+            steps {
+                script {
+                    echo "Running dummy sanity tests..."
+                    def testPassed = new Random().nextBoolean()
+                    env.TEST_PASSED = testPassed
+                    echo testPassed.toString()
+                    echo "${env.TEST_PASSED}"
+                    env.TEST_PASSED = 'true'
+                    echo "${env.TEST_PASSED}"
+
+                }
+            }
+        }
+
+        stage('Conditional Create New Masked Snapshot or Rollback') {
+            parallel {
+                stage('Create new Masked Snapshot') {
+                   when {
+                        expression { return env.TEST_PASSED == 'true' }
+                    } 
+                    stages {
+                        stage('Snapshot PROD') {
+                            steps {
+                                echo "Sanity tests passed, triggering Delphix snapshot..."
+
+                                sh """
+                                ${DCT_CLI} snapshot_dsource dsource_id=Postgres_master
+                                """
+                            }
+                        }
+                        stage('Refresh MASK VDB from PROD') {
+                            steps {
+                                sh """
+                                ${DCT_CLI} refresh_vdb_by_snapshot vdb_id=Postgres_MASK
+                                """
+                            }
+                        }
+                        stage('Mask MASK VDB ') {
+                            steps {
+                                sh """
+                                ${DCT_CLI} execute_masking_job masking_job_id=$MASKING_JOB_ID
+                                """
+                            }
+                        }
+                        stage('Snapshot MASK VDB') {
+                            steps {
+                                sh """
+                                ${DCT_CLI} snapshot_vdb vdb_id=Postgres_MASK
+                                """
+                            }
+                        }
+                    }
+                }
+                stage('Rollback PROD Changes') {
+                   when {
+                        expression { return env.TEST_PASSED == 'false' }
+                    } 
+                    stages {
+                        stage('Rollback PROD') {
+                            steps {
+                                echo "Sanity tests failed, performing Liquibase rollback..."
+
+                                sh """
+                                ${LB_CLI} \
+                                --url=${DB_URL} \
+                                --username=${DB_USER} --password=${DB_PASS} \
+                                --changeLogFile=${CHANGE_FILE} \
+                                rollback-one-update --force
+                                """
+                            }
+                        }
+                        stage('Error Pipeline') {
+                            steps {
+                                error("Rolled back PROD successfully.")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                slackNotify(":white_check_mark: Production DB update *SUCCEEDED* and *Postgres_MASK* snapshot created from *Postgres_PROD*.")
+            }
+        }
+        failure {
+            script {
+                slackNotify(":x: Production DB update *FAILED*. Rollback attempted on *Postgres_PROD*.")
+            }
+        }
+    }
+}
+
+def slackNotify(String message) {
+    sh """
+    curl -X POST -H 'Content-type: application/json' \
+         --data '{"text": "${message}"}' ${SLACK_WEBHOOK}
+    """
+}

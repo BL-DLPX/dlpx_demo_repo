@@ -1,0 +1,80 @@
+//
+// Pipeline to prepare update Postgres QA with changes from GitHub
+//
+// Demo:  Postgres Liquibase Demo 2.0
+//
+// 2025 (c) Delphix - Nick Mathison (nick.mathison@perforce.com) 
+//                    Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+//
+
+pipeline {
+    agent { label 'devops' }
+
+    environment {
+        REPO_URL = 'https://github.com/nick-mathison/my-database-changes.git'
+        DCT_CLI = '/root/dct-toolkit' // Path to DCT CLI
+        LB_CLI = 'liquibase'
+        DB_URL = 'jdbc:postgresql://10.160.1.74:7432/delphixdb'
+        DB_USER = credentials('LB_PG_USER')
+        DB_PASS = credentials('LB_PG_PASSWORD')
+        CHANGE_FILE = 'my-database-changes.sql'
+        SLACK_WEBHOOK = credentials('slack-webhook') // Store your webhook in Jenkins Credentials
+    }
+
+    stages {
+        stage('Checkout Database Changes') {
+            steps {
+                git branch: 'main', url: "${REPO_URL}"
+            }
+        }
+
+        stage('Refresh Postgres_QA VDB from PROD') {
+            steps {
+                sh """
+                ${DCT_CLI} refresh_vdb_by_snapshot vdb_id=Postgres_QA
+                """
+            }
+        }
+
+        stage('Update Postgres_QA VDB with Liquibase') {
+            steps {
+                sh """
+                ${LB_CLI} \
+                  --url=${DB_URL} \
+                  --username=${DB_USER} --password=${DB_PASS} \
+                  --changeLogFile=${CHANGE_FILE} \
+                  update
+                """
+            }
+        }
+
+        stage('Notify Slack of Result') {
+            steps {
+                script {
+                    def payload = """{
+                        "text": ":white_check_mark: Database update successful on *Postgres_QA* using *${CHANGE_FILE}*"
+                    }"""
+                    sh """
+                    curl -X POST -H 'Content-type: application/json' \
+                         --data '${payload}' ${SLACK_WEBHOOK}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                def failPayload = """{
+                    "text": ":x: Database update FAILED on *Postgres_QA*. Please investigate."
+                }"""
+                sh """
+                curl -X POST -H 'Content-type: application/json' \
+                     --data '${failPayload}' ${SLACK_WEBHOOK}
+                """
+            }
+        }
+    }
+}

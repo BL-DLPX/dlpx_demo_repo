@@ -1,0 +1,39 @@
+//
+// Pipeline to create local SuiteCRM user VDBs
+//
+// Demo:  Standard Demo 2.0
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+// 2025 (c) Delphix - Stuart Williams (stuart.williams@perforce.com)
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   environment {
+      BMID = credentials('Blazemeter-ID')
+   }
+   stages {
+      stage('Create User VDBs') {
+         agent { label 'devops' }
+         steps {
+             parallel (
+               create_dev_vdb: {
+                   sh '''
+                   REPO=$(/root/dct-toolkit search_environments name="SQL Server Staging" -ex=repositories |grep MSSQLSERVER | awk '{ print $1 }')
+                
+                   /root/dct-toolkit provision_vdb_by_snapshot mssql name="suitecrm-dev" database_name="suitecrm-dev" --vdb_restart source_data_id="suitecrm-mask" repository_id="${REPO}" target_group_id="DEV" tags="app=suitecrm"           
+                   '''
+               },
+               create_qa_vdb: {
+                   sh '''
+                   REPO=$(/root/dct-toolkit search_environments name="SQL Server Staging" -ex=repositories |grep MSSQLSERVER | awk '{ print $1 }')
+                
+                   /root/dct-toolkit provision_vdb_by_snapshot mssql name="suitecrm-qa" database_name="suitecrm-qa" --vdb_restart source_data_id="suitecrm-mask" repository_id="${REPO}" target_group_id="QA" tags="app=suitecrm"           
+                   '''
+               }
+            )
+         }  
+      }
+   }
+}

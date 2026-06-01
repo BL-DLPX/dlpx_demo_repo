@@ -1,0 +1,64 @@
+//
+// Pipeline to Refresh Demo environment, showing Data Secure Delivery - Oracle Multi-tenant
+//
+// Demo:  Standard Demo 2.0
+//
+// 2024 (c) Delphix - Matteo Ferrari (matteo.ferrari@perforce.com)
+//
+
+pipeline {
+
+   agent { label 'devops' }
+   stages {
+      stage('Snap Source') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               /root/dct-toolkit snapshot_dsource dsource_id='winterfell_master' 
+               """
+         }
+      }   
+      stage('Refresh MASK VPDB from latest snapshot') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               export vdb_name="\$(/root/dct-toolkit search_vdbs name='winterfell_mask' --no-is_replica -js -jp 'items[0].id')"
+               /root/dct-toolkit refresh_vdb_by_snapshot vdb_id=\${vdb_name}                
+               """
+         }
+      }   
+      stage('Run Masking job - TO DO') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               """
+         }
+      }  
+      stage('Snap local MASK VPDB') {
+         agent { label 'devops' }
+         steps {
+            sh """
+               export vdb_name="\$(/root/dct-toolkit search_vdbs name='winterfell_mask' --no-is_replica -js -jp 'items[0].id')"
+               /root/dct-toolkit snapshot_vdb vdb_id=\${vdb_name}
+               """
+         }
+      }  
+      stage('Refresh DEV and QA VPDBs with latest data') {
+         agent { label 'devops' }
+         steps {
+            parallel(
+                Refresh_DEV_VPDB: {
+                      sh """
+                         /root/dct-toolkit refresh_vdb_by_snapshot vdb_id='winterfell_dev'
+                         """
+                },
+                Refresh_QA_VPDB: {
+                      sh """
+                         /root/dct-toolkit refresh_vdb_by_snapshot vdb_id='winterfell_qa'
+                         """
+                }
+            )
+         }
+      }   
+   }
+}
