@@ -1,0 +1,81 @@
+pipeline {
+    agent { label 'devops' }
+
+    stages {
+
+        stage('Create a VDB for Dev') {
+            agent { label 'devops' }
+            steps {
+                sh "/home/delphix/dct-toolkit provision_vdb_by_snapshot mssql source_data_id='Suitecrm_master' name='suitecrm_DEV' database_name='suitecrm-dev' environment_id='Sqlserver_Target' environment_user_id='delphix_os' repository_id='MSSQLSERVER' target_group_id='Demo'"
+            }
+        }
+
+        stage('Approval Gate: Masking Decision') {
+            steps {
+                script {
+                    def maskDecision = input(
+                        id: 'maskingDecision',
+                        message: 'Do we want to mask this VDB?',
+                        ok: 'Submit',
+                        parameters: [
+                            choice(
+                                name: 'DECISION',
+                                choices: ['Yes', 'End the Session'],
+                                description: 'Select an option'
+                            )
+                        ]
+                    )
+
+                    if (maskDecision == 'End the Session') {
+                        echo 'User chose to end the session. Stopping pipeline.'
+                        currentBuild.result = 'ABORTED'
+                        error('Pipeline manually stopped by user at masking decision gate.')
+                    } else {
+                        echo 'User chose Yes. Proceeding to masking job.'
+                    }
+                }
+            }
+        }
+
+        stage('Run MASK job for My VDB') {
+            agent { label 'devops' }
+            steps {
+                sh "/home/delphix/dct-toolkit execute_masking_job engine_id=CCE1 masking_job_id='M1-sCRM-Dev'"
+            }
+        }
+
+        stage('Approval Gate: Remove VDB Decision') {
+            steps {
+                script {
+                    // This pauses the pipeline indefinitely until someone clicks "Yes" (or aborts)
+                    input(
+                        id: 'removeVdbDecision',
+                        message: 'Click Yes to remove this VDB',
+                        ok: 'Yes'
+                    )
+                    echo 'User confirmed. Proceeding to destroy VDB.'
+                }
+            }
+        }
+
+        stage('Destroy My VDB') {
+            agent { label 'devops' }
+            steps {
+                parallel(
+                    Delete_DEV: {
+                        sh "/home/delphix/dct-toolkit delete_vdb vdb_id='suitecrm_DEV'"
+                    }
+                )
+            }
+        }
+    }
+
+    post {
+        aborted {
+            echo 'Pipeline was aborted at an approval gate.'
+        }
+        success {
+            echo 'Workflow completed: VDB created, masked, and destroyed.'
+        }
+    }
+}
